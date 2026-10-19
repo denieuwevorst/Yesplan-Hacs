@@ -1,0 +1,58 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Yesplan",
+        "description": "Enter the address of your Yesplan installation and an API key.",
+        "data": {
+          "base_url": "Yesplan address (e.g. https://yourtheatre.yesplan.nl)",
+          "api_key": "API key"
+        }
+      },
+      "locations": {
+        "title": "Choose locations",
+        "description": "Pick the locations you want sensors for.",
+        "data": {
+          "locations": "Locations",
+          "days_ahead": "Days ahead to fetch",
+          "scan_interval": "Refresh every (minutes)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "The API key is no longer accepted. Enter a new one.",
+        "data": { "api_key": "API key" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to Yesplan. Check the address.",
+      "invalid_auth": "API key rejected.",
+      "unknown": "Unknown error, see the log."
+    },
+    "abort": {
+      "already_configured": "This Yesplan installation is already added.",
+      "reauth_successful": "API key updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Yesplan options",
+        "data": {
+          "locations": "Locations",
+          "days_ahead": "Days ahead to fetch",
+          "scan_interval": "Refresh every (minutes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_start": { "name": "Next start" },
+      "events_today": { "name": "Events today" }
+    },
+    "binary_sensor": {
+      "active": { "name": "Occupied" }
+    }
+  }
+}

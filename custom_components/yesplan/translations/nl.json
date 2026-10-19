@@ -1,0 +1,58 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbinden met Yesplan",
+        "description": "Vul het adres van jullie Yesplan-installatie en een API key in.",
+        "data": {
+          "base_url": "Yesplan-adres (bijv. https://jouwtheater.yesplan.nl)",
+          "api_key": "API key"
+        }
+      },
+      "locations": {
+        "title": "Zalen kiezen",
+        "description": "Kies de zalen waarvoor je sensors wilt hebben.",
+        "data": {
+          "locations": "Zalen",
+          "days_ahead": "Aantal dagen vooruit ophalen",
+          "scan_interval": "Verversen elke (minuten)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw verifiëren",
+        "description": "De API key wordt niet meer geaccepteerd. Vul een nieuwe in.",
+        "data": { "api_key": "API key" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Geen verbinding met Yesplan. Controleer het adres.",
+      "invalid_auth": "API key geweigerd.",
+      "unknown": "Onbekende fout, zie het logboek."
+    },
+    "abort": {
+      "already_configured": "Deze Yesplan-installatie is al toegevoegd.",
+      "reauth_successful": "API key bijgewerkt."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Yesplan-opties",
+        "data": {
+          "locations": "Zalen",
+          "days_ahead": "Aantal dagen vooruit ophalen",
+          "scan_interval": "Verversen elke (minuten)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_start": { "name": "Volgende start" },
+      "events_today": { "name": "Voorstellingen vandaag" }
+    },
+    "binary_sensor": {
+      "active": { "name": "Bezet" }
+    }
+  }
+}
