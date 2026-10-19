@@ -30,6 +30,40 @@ De entiteit-ID's volgen de zaalnaam; controleer ze onder Ontwikkelaarstools → 
 **Tijden:** de voorstellingstijd is `defaultschedulestart`/`defaultscheduleend`.
 Ontbreken die, dan wordt de start- of eindtijd van de boeking gebruikt. Geannuleerde evenementen worden genegeerd.
 
+## Dashboardkaart
+
+De integratie levert een eigen kaart mee en laadt die automatisch; je hoeft geen resource toe te voegen.
+Na het installeren of updaten één keer de browser hard verversen (Ctrl+F5) en bij de mobiele app
+de cache wissen of de app herstarten.
+
+Voeg toe via **Dashboard bewerken → Kaart toevoegen → Handmatig**:
+
+```yaml
+type: custom:yesplan-card
+title: Dagplanning
+zalen:                 # optioneel: volgorde en selectie
+  - De Nieuwe Vorst
+  - Grote zaal
+  - Kleine zaal
+  - Leesstudio
+  - Rode salon
+  - Balkonkamer
+hide_empty: true       # zalen zonder evenementen verbergen (standaard true)
+show_profile: true     # profiel onder de titel tonen (standaard true)
+```
+
+Per zaal toont de kaart:
+
+- **Bezet / Vrij** als badge, met een gekleurde rand zodra er iets bezig is
+- **Nu bezig**: naam en eindtijd van het lopende evenement
+- **Volgende**: naam, starttijd en hoe lang het nog duurt (op een andere dag met datum)
+- **Agenda van vandaag**: tijden, naam, profiel en status (Bevestigd/Optie/Voorlopig) per evenement; afgelopen items worden gedimd, het lopende item is vet
+
+Zonder `zalen` worden alle zalen van de integratie getoond, alfabetisch. De kleuren volgen je thema.
+
+Past de kaart de zaalnaam niet automatisch aan? De kaart zoekt de entiteiten via het apparaat van de integratie, dus
+hernoemde apparaten werken ook, mits `zalen` dezelfde naam gebruikt als het apparaat.
+
 ## Voorbeeldautomatiseringen
 
 Een uur voor aanvang opwarmen. De `time`-trigger kan direct op een timestamp-sensor draaien:
