@@ -1,7 +1,7 @@
 {
   "domain": "yesplan",
   "name": "Yesplan",
-  "codeowners": [],
+  "codeowners": [DeNieuweVorst],
   "config_flow": true,
   "dependencies": [
     "http",
