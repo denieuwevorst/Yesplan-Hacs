@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
+from collections.abc import Callable
 from typing import Any
 
 EXCLUDED_STATUSES = {"geannuleerd", "cancelled", "canceled"}
@@ -101,3 +102,27 @@ def event_to_attrs(event: dict[str, Any]) -> dict[str, Any]:
         "status": event["status"],
         "profile": event["profile"],
     }
+
+
+def week_bounds(today: date) -> tuple[date, date]:
+    """Monday and Sunday of the calendar week containing `today`."""
+    start = today - timedelta(days=today.weekday())
+    return start, start + timedelta(days=6)
+
+
+def fetch_days(today: date, days_ahead: int) -> list[date]:
+    """Days to request: the whole current week, plus enough to cover tomorrow
+    and `days_ahead` days (matters on Sundays and with a long look-ahead)."""
+    start, week_end = week_bounds(today)
+    last = max(week_end, today + timedelta(days=max(days_ahead, 2) - 1))
+    return [start + timedelta(days=i) for i in range((last - start).days + 1)]
+
+
+def events_between(
+    events: list[dict[str, Any]],
+    first: date,
+    last: date,
+    to_local: Callable[[datetime], datetime] = lambda d: d,
+) -> list[dict[str, Any]]:
+    """Events whose (local) start date lies within first..last inclusive."""
+    return [e for e in events if first <= to_local(e["start"]).date() <= last]

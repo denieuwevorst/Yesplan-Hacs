@@ -21,7 +21,9 @@
       "reauth_confirm": {
         "title": "Re-authenticate",
         "description": "The API key is no longer accepted. Enter a new one.",
-        "data": { "api_key": "API key" }
+        "data": {
+          "api_key": "API key"
+        }
       }
     },
     "error": {
@@ -48,11 +50,23 @@
   },
   "entity": {
     "sensor": {
-      "next_start": { "name": "Next start" },
-      "events_today": { "name": "Events today" }
+      "next_start": {
+        "name": "Next start"
+      },
+      "events_today": {
+        "name": "Events today"
+      },
+      "events_tomorrow": {
+        "name": "Events tomorrow"
+      },
+      "events_week": {
+        "name": "Events this week"
+      }
     },
     "binary_sensor": {
-      "active": { "name": "Occupied" }
+      "active": {
+        "name": "Occupied"
+      }
     }
   }
 }

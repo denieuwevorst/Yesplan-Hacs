@@ -23,6 +23,8 @@ Zalen, dagen en interval kun je later wijzigen via **Configureren** bij de integ
 |---|---|---|
 | Sensor **Volgende start** | `sensor.grote_zaal_volgende_start` | Tijdstip (timestamp) van het eerstvolgende evenement dat nog niet is begonnen. Attributen: `name`, `end`, `status`, `profile`. |
 | Sensor **Voorstellingen vandaag** | `sensor.grote_zaal_voorstellingen_vandaag` | Aantal evenementen dat vandaag begint; attribuut `events` met de lijst. |
+| Sensor **Voorstellingen morgen** | `sensor.grote_zaal_voorstellingen_morgen` | Hetzelfde voor morgen. |
+| Sensor **Voorstellingen deze week** | `sensor.grote_zaal_voorstellingen_deze_week` | Evenementen in de kalenderweek (maandag t/m zondag) waarin we zitten. |
 | Binary sensor **Bezet** | `binary_sensor.grote_zaal_bezet` | `on` zolang er een evenement bezig is. Attributen: `name`, `end`. |
 
 De entiteit-ID's volgen de zaalnaam; controleer ze onder Ontwikkelaarstools → Statussen.
@@ -48,16 +50,30 @@ zalen:                 # optioneel: volgorde en selectie
   - Leesstudio
   - Rode salon
   - Balkonkamer
+range: today           # today (standaard), tomorrow of week
 hide_empty: true       # zalen zonder evenementen verbergen (standaard true)
 show_profile: true     # profiel onder de titel tonen (standaard true)
 ```
 
+Met `range` kies je de periode. Voeg gerust meerdere kaarten toe:
+
+```yaml
+type: custom:yesplan-card
+title: Morgen
+range: tomorrow
+```
+
+```yaml
+type: custom:yesplan-card
+title: Deze week
+range: week
+```
+
 Per zaal toont de kaart:
 
-- **Bezet / Vrij** als badge, met een gekleurde rand zodra er iets bezig is
-- **Nu bezig**: naam en eindtijd van het lopende evenement
-- **Volgende**: naam, starttijd en hoe lang het nog duurt (op een andere dag met datum)
-- **Agenda van vandaag**: tijden, naam, profiel en status (Bevestigd/Optie/Voorlopig) per evenement; afgelopen items worden gedimd, het lopende item is vet
+- **Volgende** (alleen bij `today`): naam, starttijd en hoe lang het nog duurt
+- **Agenda**: tijden, naam, profiel en status (Bevestigd/Optie/Voorlopig) per evenement; afgelopen items worden gedimd
+- Bij `week`: de evenementen gegroepeerd per dag, met de dag van vandaag gemarkeerd. Dagen zonder evenementen worden overgeslagen
 
 Zonder `zalen` worden alle zalen van de integratie getoond, alfabetisch. De kleuren volgen je thema.
 
@@ -102,8 +118,10 @@ als de volgende start meer dan 2 uur weg is).
 
 ## Werking en beperkingen
 
-- De Yesplan-API ondersteunt geen datumbereik, dus er is **één aanvraag per dag** per verversing
-  (standaard 3 dagen × elke 15 min). Houd het interval redelijk; Yesplan heeft rate limits.
+- De Yesplan-API ondersteunt geen datumbereik, dus er is **één aanvraag per dag**. Per verversing worden
+  vandaag t/m zondag opgehaald (minimaal tot morgen, of zoveel dagen als je bij "dagen vooruit" instelt).
+  Dagen eerder in de week veranderen zelden en worden maximaal één keer per uur opnieuw opgehaald.
+  Houd het interval redelijk; Yesplan heeft rate limits.
 - Start- en eindtijden worden elke minuut opnieuw beoordeeld zonder extra aanvragen.
 - Alleen kerngegevens van het evenement (naam, tijden, status, profiel) worden opgehaald.
   Tijdschema's, resources en kaartverkoop zitten er niet in.

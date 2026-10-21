@@ -21,7 +21,9 @@
       "reauth_confirm": {
         "title": "Opnieuw verifiëren",
         "description": "De API key wordt niet meer geaccepteerd. Vul een nieuwe in.",
-        "data": { "api_key": "API key" }
+        "data": {
+          "api_key": "API key"
+        }
       }
     },
     "error": {
@@ -48,11 +50,23 @@
   },
   "entity": {
     "sensor": {
-      "next_start": { "name": "Volgende start" },
-      "events_today": { "name": "Voorstellingen vandaag" }
+      "next_start": {
+        "name": "Volgende start"
+      },
+      "events_today": {
+        "name": "Voorstellingen vandaag"
+      },
+      "events_tomorrow": {
+        "name": "Voorstellingen morgen"
+      },
+      "events_week": {
+        "name": "Voorstellingen deze week"
+      }
     },
     "binary_sensor": {
-      "active": { "name": "Bezet" }
+      "active": {
+        "name": "Bezet"
+      }
     }
   }
 }
