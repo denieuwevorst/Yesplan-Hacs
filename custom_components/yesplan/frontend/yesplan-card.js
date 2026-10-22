@@ -21,22 +21,20 @@ const CARD_VERSION = (() => {
 
 const STR = {
   nl: {
-    next: "Volgende",
-    at: "om", inTime: "over", todayLbl: "vandaag",
+    todayLbl: "vandaag",
     emptyToday: "Geen evenementen vandaag.", emptyTomorrow: "Geen evenementen morgen.",
     emptyWeek: "Geen evenementen deze week.",
     needUpdate: "De sensor voor deze periode ontbreekt. Werk de Yesplan-integratie bij en herstart Home Assistant.",
     noZones: "Geen zalen gevonden. Is de Yesplan-integratie ingesteld?",
-    unavailable: "Niet beschikbaar", min: "min", hr: "u",
+    unavailable: "Niet beschikbaar",
   },
   en: {
-    next: "Next",
-    at: "at", inTime: "in", todayLbl: "today",
+    todayLbl: "today",
     emptyToday: "No events today.", emptyTomorrow: "No events tomorrow.",
     emptyWeek: "No events this week.",
     needUpdate: "The sensor for this period is missing. Update the Yesplan integration and restart Home Assistant.",
     noZones: "No locations found. Is the Yesplan integration set up?",
-    unavailable: "Unavailable", min: "min", hr: "h",
+    unavailable: "Unavailable",
   },
 };
 
@@ -53,7 +51,6 @@ const GUESS = {
   events_today: ["sensor", ["voorstellingen_vandaag", "events_today"]],
   events_tomorrow: ["sensor", ["voorstellingen_morgen", "events_tomorrow"]],
   events_week: ["sensor", ["voorstellingen_deze_week", "events_this_week"]],
-  next_start: ["sensor", ["volgende_start", "next_start"]],
 };
 
 const STYLE = `
@@ -67,14 +64,12 @@ const STYLE = `
   .head { display: flex; justify-content: space-between; align-items: center;
           gap: 8px; margin-bottom: 8px; }
   .name { font-weight: 600; font-size: 1.05em; }
-  .next { font-size: .9em; margin-bottom: 6px; line-height: 1.35; }
-  .lbl { color: var(--secondary-text-color); font-size: .8em; text-transform: uppercase;
-         letter-spacing: .04em; margin-right: 4px; }
   .list { margin-top: 6px; }
-  .day { font-size: .78em; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
-         color: var(--secondary-text-color); padding: 12px 0 2px; }
-  .day:first-child { padding-top: 4px; }
-  .day.today { color: var(--primary-color); }
+  .daysec { padding-bottom: 2px; }
+  .daysec .grid { padding-bottom: 8px; }
+  .dayhead { font-size: .8em; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+             color: var(--secondary-text-color); padding: 10px 16px 6px; }
+  .dayhead.today { color: var(--primary-color); }
   .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px;
          align-items: baseline; padding: 7px 0; border-top: 1px solid var(--divider-color); }
   .row.past { opacity: .45; }
@@ -98,8 +93,9 @@ class YesplanCard extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = { hide_empty: true, show_profile: true, range: "today", ...config };
+    this._config = { hide_empty: true, show_profile: true, range: "today", sort: "time", ...config };
     if (!RANGE_KEY[this._config.range]) this._config.range = "today";
+    if (!["time", "zalen"].includes(this._config.sort)) this._config.sort = "time";
     this._zoneCache = null;
     this._sig = null;
     this._render();
@@ -178,10 +174,9 @@ class YesplanCard extends HTMLElement {
     if (!this._config || !this._hass) return "";
     const parts = [];
     for (const z of this._zones()) {
-      for (const id of Object.values(z.ids)) {
-        const st = this._hass.states[id];
-        parts.push(`${id}:${st ? st.last_updated : "-"}`);
-      }
+      const id = z.ids[RANGE_KEY[this._config.range]];
+      const st = id ? this._hass.states[id] : undefined;
+      parts.push(`${id}:${st ? st.last_updated : "-"}`);
     }
     return parts.join("|");
   }
@@ -194,16 +189,6 @@ class YesplanCard extends HTMLElement {
   }
   _dayKey(d) { return new Date(d).toLocaleDateString("en-CA", { timeZone: this._tz }); }
 
-  _until(iso) {
-    const s = this._s;
-    const m = Math.round((new Date(iso) - new Date()) / 60000);
-    if (m <= 0) return "";
-    if (m < 60) return `${s.inTime} ${m} ${s.min}`;
-    const hh = Math.floor(m / 60), mm = m % 60;
-    if (hh >= 24) return "";
-    return `${s.inTime} ${hh} ${s.hr}${mm ? ` ${mm} ${s.min}` : ""}`;
-  }
-
   _chip(status) {
     if (!status) return "";
     const k = status.toLowerCase();
@@ -213,69 +198,97 @@ class YesplanCard extends HTMLElement {
     return `<span class="chip ${cls}">${esc(status)}</span>`;
   }
 
-  _zoneHtml(z) {
-    const s = this._s;
-    const h = this._hass;
-    const st = (id) => (id ? h.states[id] : undefined);
-    const range = this._config.range;
-    const todayE = st(z.ids[RANGE_KEY[range]]);
-    const nextE = st(z.ids.next_start);
+  // One zone's events for the selected range, always sorted by start time.
+  _collect(z) {
+    const id = z.ids[RANGE_KEY[this._config.range]];
+    const ent = id ? this._hass.states[id] : undefined;
+    const unavailable = !ent || ent.state === "unavailable";
+    // An unavailable sensor must not show stale data.
+    const events = unavailable
+      ? []
+      : [...((ent.attributes && ent.attributes.events) || [])]
+          .sort((a, b) => new Date(a.start) - new Date(b.start));
+    return { name: z.name, events, unavailable };
+  }
+
+  // Tiles with the earliest first start time come first. Ties (and sort: zalen)
+  // keep the configured zone order.
+  _order(items) {
+    if (this._config.sort === "zalen") return items;
+    const first = (x) => (x.events.length ? new Date(x.events[0].start).getTime() : Infinity);
+    return items
+      .map((x, i) => [x, i])
+      .sort((a, b) => first(a[0]) - first(b[0]) || a[1] - b[1])
+      .map((x) => x[0]);
+  }
+
+  _rowHtml(e, now) {
+    const end = e.end ? new Date(e.end) : null;
+    const past = end ? end <= now : false;
+    const profile = this._config.show_profile && e.profile
+      ? `<div class="sub">${esc(e.profile)}</div>` : "";
+    return `<div class="row ${past ? "past" : ""}">
+      <div class="time">${this._fmtTime(e.start)}${e.end ? `–${this._fmtTime(e.end)}` : ""}</div>
+      <div><div class="title">${esc(e.name)}</div>${profile}</div>
+      ${this._chip(e.status)}</div>`;
+  }
+
+  _tileHtml(name, events, emptyText) {
     const now = new Date();
+    const list = events.length
+      ? `<div class="list">${events.map((e) => this._rowHtml(e, now)).join("")}</div>`
+      : `<div class="none">${emptyText}</div>`;
+    return `<div class="zaal"><div class="head"><div class="name">${esc(name)}</div></div>${list}</div>`;
+  }
 
-    const unavailable = !todayE || todayE.state === "unavailable";
-    const events = (todayE && todayE.attributes && todayE.attributes.events) || [];
+  _emptyText() {
+    const s = this._s;
+    return { today: s.emptyToday, tomorrow: s.emptyTomorrow, week: s.emptyWeek }[this._config.range];
+  }
 
-    if (this._config.hide_empty && events.length === 0 && !unavailable) return "";
+  // Today / tomorrow: one tile per zone.
+  _dayHtml(items) {
+    const s = this._s;
+    const empty = this._emptyText();
+    const shown = items.filter((i) => !(this._config.hide_empty && !i.events.length && !i.unavailable));
+    if (!shown.length) return `<div class="msg">${empty}</div>`;
+    return `<div class="grid">${this._order(shown)
+      .map((i) => this._tileHtml(i.name, i.events, i.unavailable ? s.unavailable : empty))
+      .join("")}</div>`;
+  }
 
-    let nextHtml = "";
-    if (range === "today" && nextE && nextE.state && !["unknown", "unavailable"].includes(nextE.state)) {
-      const a = nextE.attributes || {};
-      const sameDay = this._dayKey(nextE.state) === this._dayKey(now);
-      const when = sameDay
-        ? `${s.at} ${this._fmtTime(nextE.state)}`
-        : `${new Date(nextE.state).toLocaleDateString(this._lang, {
-            weekday: "short", day: "numeric", month: "short", timeZone: this._tz })} ${this._fmtTime(nextE.state)}`;
-      const rel = sameDay ? this._until(nextE.state) : "";
-      nextHtml = `<div class="next"><span class="lbl">${s.next}</span><strong>${esc(a.name)}</strong> <span class="sub">${when}${rel ? ` · ${rel}` : ""}</span></div>`;
-    }
-
-    const row = (e) => {
-      const end = e.end ? new Date(e.end) : null;
-      const past = end ? end <= now : false;
-      const profile = this._config.show_profile && e.profile
-        ? `<div class="sub">${esc(e.profile)}</div>` : "";
-      return `<div class="row ${past ? "past" : ""}">
-        <div class="time">${this._fmtTime(e.start)}${e.end ? `–${this._fmtTime(e.end)}` : ""}</div>
-        <div><div class="title">${esc(e.name)}</div>${profile}</div>
-        ${this._chip(e.status)}</div>`;
-    };
-
-    let rows = "";
-    if (range === "week") {
-      const todayKey = this._dayKey(now);
-      let lastKey = null;
-      for (const e of events) {
-        const key = this._dayKey(e.start);
-        if (key !== lastKey) {
-          lastKey = key;
-          const label = new Date(e.start).toLocaleDateString(this._lang, {
-            weekday: "long", day: "numeric", month: "long", timeZone: this._tz });
-          rows += `<div class="day ${key === todayKey ? "today" : ""}">${esc(label)}${
-            key === todayKey ? ` · ${s.todayLbl}` : ""}</div>`;
-        }
-        rows += row(e);
+  // Week: one section per day (chronological); inside, one tile per zone.
+  _weekHtml(items) {
+    const s = this._s;
+    const days = new Map();
+    for (const info of items) {
+      const byDay = new Map();
+      for (const e of info.events) {
+        const k = this._dayKey(e.start);
+        if (!byDay.has(k)) byDay.set(k, []);
+        byDay.get(k).push(e);
       }
-    } else {
-      rows = events.map(row).join("");
+      for (const [k, events] of byDay) {
+        if (!days.has(k)) days.set(k, { key: k, first: events[0].start, tiles: [] });
+        days.get(k).tiles.push({ name: info.name, events });
+      }
     }
-
-    const listHtml = rows
-      ? `<div class="list">${rows}</div>`
-      : `<div class="none">${unavailable ? s.unavailable : (range === "week" ? s.emptyWeek : range === "tomorrow" ? s.emptyTomorrow : s.emptyToday)}</div>`;
-
-    return `<div class="zaal">
-      <div class="head"><div class="name">${esc(z.name)}</div></div>
-      ${nextHtml}${listHtml}</div>`;
+    if (!days.size) {
+      return `<div class="msg">${items.every((i) => i.unavailable) ? s.unavailable : s.emptyWeek}</div>`;
+    }
+    const todayKey = this._dayKey(new Date());
+    return [...days.values()]
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      .map((d) => {
+        const label = new Date(d.first).toLocaleDateString(this._lang, {
+          weekday: "long", day: "numeric", month: "long", timeZone: this._tz });
+        const isToday = d.key === todayKey;
+        return `<section class="daysec">
+          <div class="dayhead ${isToday ? "today" : ""}">${esc(label)}${isToday ? ` · ${s.todayLbl}` : ""}</div>
+          <div class="grid">${this._order(d.tiles).map((t) => this._tileHtml(t.name, t.events, "")).join("")}</div>
+        </section>`;
+      })
+      .join("");
   }
 
   _render() {
@@ -283,15 +296,15 @@ class YesplanCard extends HTMLElement {
     const s = this._s;
     const zones = this._zones();
     const key = RANGE_KEY[this._config.range];
-    const tiles = zones.map((z) => this._zoneHtml(z)).filter(Boolean).join("");
-    const empty = { today: s.emptyToday, tomorrow: s.emptyTomorrow, week: s.emptyWeek }[this._config.range];
-    const body = !zones.length
-      ? `<div class="msg">${s.noZones}</div>`
-      : zones.every((z) => !z.ids[key] && !this._hass.states[this._guess(z.name)[key]])
-        ? `<div class="msg">${s.needUpdate}</div>`
-      : tiles
-        ? `<div class="grid">${tiles}</div>`
-        : `<div class="msg">${empty}</div>`;
+    let body;
+    if (!zones.length) {
+      body = `<div class="msg">${s.noZones}</div>`;
+    } else if (zones.every((z) => !z.ids[key] && !this._hass.states[this._guess(z.name)[key]])) {
+      body = `<div class="msg">${s.needUpdate}</div>`;
+    } else {
+      const items = zones.map((z) => this._collect(z));
+      body = this._config.range === "week" ? this._weekHtml(items) : this._dayHtml(items);
+    }
     const title = this._config.title;
     this.shadowRoot.innerHTML = `<style>${STYLE}</style>
       <ha-card${title ? ` header="${esc(title)}"` : ""}>${body}</ha-card>`;
