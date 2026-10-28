@@ -43,9 +43,17 @@
         "data": {
           "locations": "Locations",
           "days_ahead": "Days ahead to fetch",
-          "scan_interval": "Refresh every (minutes)"
-        }
+          "scan_interval": "Refresh every (minutes)",
+          "ticket_capacity": "Ticket sales: capacity field",
+          "ticket_sold": "Ticket sales: sold field",
+          "ticket_available": "Ticket sales: available field",
+          "custom_fields": "Custom fields (keywords)"
+        },
+        "description": "Ticket sales: enter the names (keywords) of the custom data fields in Yesplan. The capacity field is required, the others are optional. Custom fields: add as many extra fields as you like (maximum 20); they are added to every event, labelled with the name Yesplan gives them. Leave all empty to turn it off.{invalid}"
       }
+    },
+    "error": {
+      "invalid_fields": "Yesplan rejects one or more of these fields. Check the names (keywords); see below which ones."
     }
   },
   "entity": {

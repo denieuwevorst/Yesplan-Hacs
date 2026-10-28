@@ -21,7 +21,8 @@ const CARD_VERSION = (() => {
 
 const STR = {
   nl: {
-    todayLbl: "vandaag",
+    todayLbl: "vandaag", schedule: "Tijdschema",
+    sold: "verkocht", free: "vrij", soldOut: "Uitverkocht", seats: "plaatsen",
     emptyToday: "Geen evenementen vandaag.", emptyTomorrow: "Geen evenementen morgen.",
     emptyWeek: "Geen evenementen deze week.",
     needUpdate: "De sensor voor deze periode ontbreekt. Werk de Yesplan-integratie bij en herstart Home Assistant.",
@@ -29,7 +30,8 @@ const STR = {
     unavailable: "Niet beschikbaar",
   },
   en: {
-    todayLbl: "today",
+    todayLbl: "today", schedule: "Schedule",
+    sold: "sold", free: "free", soldOut: "Sold out", seats: "seats",
     emptyToday: "No events today.", emptyTomorrow: "No events tomorrow.",
     emptyWeek: "No events this week.",
     needUpdate: "The sensor for this period is missing. Update the Yesplan integration and restart Home Assistant.",
@@ -73,6 +75,23 @@ const STYLE = `
   .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px;
          align-items: baseline; padding: 7px 0; border-top: 1px solid var(--divider-color); }
   .row.past { opacity: .45; }
+  .tix { margin-top: 6px; display: flex; align-items: center; gap: 8px; font-size: .85em; }
+  .tix .bar { flex: 0 1 120px; min-width: 60px; height: 6px; border-radius: 3px;
+              background: var(--divider-color); overflow: hidden; }
+  .tix .fill { height: 100%; background: var(--primary-color); }
+  .tix.full .fill { background: var(--success-color, #43a047); }
+  .tix.full span { font-weight: 600; }
+  .cust { margin-top: 6px; display: grid; grid-template-columns: auto minmax(0, 1fr);
+          column-gap: 10px; row-gap: 1px; font-size: .85em; }
+  .cust .cl { color: var(--secondary-text-color); }
+  .cust .cv { overflow-wrap: anywhere; }
+  .sched { margin-top: 8px; padding-left: 10px; border-left: 2px solid var(--divider-color);
+           display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px;
+           font-size: .85em; }
+  .sched .cap { grid-column: 1 / -1; font-size: .8em; font-weight: 600; text-transform: uppercase;
+                letter-spacing: .04em; color: var(--secondary-text-color); }
+  .stime { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .slabel { overflow-wrap: anywhere; }
   .time { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
   .title { overflow-wrap: anywhere; }
   .row > div { min-width: 0; }
@@ -93,7 +112,7 @@ class YesplanCard extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = { hide_empty: true, show_profile: true, range: "today", sort: "time", ...config };
+    this._config = { hide_empty: true, show_profile: true, range: "today", sort: "time", show_schedule: true, show_tickets: true, show_fields: true, ...config };
     if (!RANGE_KEY[this._config.range]) this._config.range = "today";
     if (!["time", "zalen"].includes(this._config.sort)) this._config.sort = "time";
     this._zoneCache = null;
@@ -222,14 +241,53 @@ class YesplanCard extends HTMLElement {
       .map((x) => x[0]);
   }
 
+  // Extra custom data fields (name | value); `fields: [keyword, ...]` limits which are shown.
+  _fieldsHtml(rows) {
+    if (!Array.isArray(rows) || !rows.length) return "";
+    const only = Array.isArray(this._config.fields) ? this._config.fields : null;
+    const shown = rows.filter((r) => r && r.value && (!only || only.includes(r.keyword)));
+    if (!shown.length) return "";
+    return `<div class="cust">${shown
+      .map((r) => `<span class="cl">${esc(r.name || r.keyword)}</span><span class="cv">${esc(r.value)}</span>`)
+      .join("")}</div>`;
+  }
+
+  // Ticket sales: "112 / 144 verkocht · 32 vrij" with a bar; nothing for events without capacity.
+  _ticketsHtml(t) {
+    if (!t || !(t.capacity > 0)) return "";
+    const s = this._s;
+    const sold = Number.isFinite(t.sold) ? t.sold : null;
+    const full = t.available === 0 || (sold !== null && sold >= t.capacity);
+    const pct = sold === null ? 0 : Math.min(100, Math.round((sold / t.capacity) * 100));
+    const text = sold === null
+      ? `${t.capacity} ${s.seats}`
+      : `${sold} / ${t.capacity} ${s.sold}` +
+        (full ? ` · ${s.soldOut}` : Number.isFinite(t.available) ? ` · ${t.available} ${s.free}` : "");
+    const bar = sold === null ? "" : `<div class="bar"><div class="fill" style="width:${pct}%"></div></div>`;
+    return `<div class="tix${full ? " full" : ""}">${bar}<span>${esc(text)}</span></div>`;
+  }
+
+  // Schedule rows: "10:00–14:00 Rehearsal", single times for items like "Zaal dicht".
+  _scheduleHtml(rows) {
+    const cells = rows.map((r) =>
+      `<span class="stime">${this._fmtTime(r.start)}${r.end ? `–${this._fmtTime(r.end)}` : ""}</span>` +
+      `<span class="slabel">${esc(r.label)}</span>`).join("");
+    return `<div class="sched"><div class="cap">${this._s.schedule}</div>${cells}</div>`;
+  }
+
   _rowHtml(e, now) {
     const end = e.end ? new Date(e.end) : null;
     const past = end ? end <= now : false;
     const profile = this._config.show_profile && e.profile
       ? `<div class="sub">${esc(e.profile)}</div>` : "";
+    const showSchedule = this._config.range === "today" && this._config.show_schedule !== false
+      && Array.isArray(e.schedule) && e.schedule.length;
+    const schedule = showSchedule ? this._scheduleHtml(e.schedule) : "";
+    const tickets = this._config.show_tickets !== false ? this._ticketsHtml(e.tickets) : "";
+    const fields = this._config.show_fields !== false ? this._fieldsHtml(e.custom) : "";
     return `<div class="row ${past ? "past" : ""}">
       <div class="time">${this._fmtTime(e.start)}${e.end ? `–${this._fmtTime(e.end)}` : ""}</div>
-      <div><div class="title">${esc(e.name)}</div>${profile}</div>
+      <div><div class="title">${esc(e.name)}</div>${profile}${tickets}${fields}${schedule}</div>
       ${this._chip(e.status)}</div>`;
   }
 

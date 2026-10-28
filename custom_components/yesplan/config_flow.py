@@ -23,58 +23,76 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
 )
+from homeassistant.util import dt as dt_util
 
-from .api import YesplanAuthError, YesplanClient, YesplanConnectionError
+from .api import YesplanAuthError, YesplanClient, YesplanConnectionError, YesplanError
 from .const import (
     CONF_API_KEY,
     CONF_BASE_URL,
+    CONF_CUSTOM_FIELDS,
     CONF_DAYS_AHEAD,
     CONF_LOCATIONS,
     CONF_SCAN_INTERVAL,
+    CONF_TICKET_AVAILABLE,
+    CONF_TICKET_CAPACITY,
+    CONF_TICKET_SOLD,
     DEFAULT_DAYS_AHEAD,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .parsing import normalize_base_url
+from .parsing import normalize_base_url, normalize_keywords
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _options_schema(locations: list[str], defaults: dict[str, Any]) -> vol.Schema:
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_LOCATIONS, default=defaults.get(CONF_LOCATIONS, [])
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=locations,
-                    multiple=True,
-                    mode=SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Required(
-                CONF_DAYS_AHEAD,
-                default=defaults.get(CONF_DAYS_AHEAD, DEFAULT_DAYS_AHEAD),
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=1, max=14, step=1, mode=NumberSelectorMode.BOX
-                )
-            ),
-            vol.Required(
-                CONF_SCAN_INTERVAL,
-                default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=5,
-                    max=120,
-                    step=1,
-                    unit_of_measurement="min",
-                    mode=NumberSelectorMode.BOX,
-                )
-            ),
-        }
-    )
+def _options_schema(
+    locations: list[str], defaults: dict[str, Any], extras: bool = False
+) -> vol.Schema:
+    fields: dict[Any, Any] = {
+        vol.Required(
+            CONF_LOCATIONS, default=defaults.get(CONF_LOCATIONS, [])
+        ): SelectSelector(
+            SelectSelectorConfig(
+                options=locations,
+                multiple=True,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        ),
+        vol.Required(
+            CONF_DAYS_AHEAD,
+            default=defaults.get(CONF_DAYS_AHEAD, DEFAULT_DAYS_AHEAD),
+        ): NumberSelector(
+            NumberSelectorConfig(min=1, max=14, step=1, mode=NumberSelectorMode.BOX)
+        ),
+        vol.Required(
+            CONF_SCAN_INTERVAL,
+            default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        ): NumberSelector(
+            NumberSelectorConfig(
+                min=5,
+                max=120,
+                step=1,
+                unit_of_measurement="min",
+                mode=NumberSelectorMode.BOX,
+            )
+        ),
+    }
+    if extras:
+        # suggested_value (not default) so a field can really be cleared in the form
+        for conf in (CONF_TICKET_CAPACITY, CONF_TICKET_SOLD, CONF_TICKET_AVAILABLE):
+            fields[
+                vol.Optional(conf, description={"suggested_value": defaults.get(conf, "")})
+            ] = str
+        fields[
+            vol.Optional(
+                CONF_CUSTOM_FIELDS,
+                description={"suggested_value": list(defaults.get(CONF_CUSTOM_FIELDS, []))},
+            )
+        ] = TextSelector(TextSelectorConfig(multiple=True))
+    return vol.Schema(fields)
 
 
 def _clean_options(user_input: dict[str, Any]) -> dict[str, Any]:
@@ -82,7 +100,27 @@ def _clean_options(user_input: dict[str, Any]) -> dict[str, Any]:
         CONF_LOCATIONS: list(user_input[CONF_LOCATIONS]),
         CONF_DAYS_AHEAD: int(user_input[CONF_DAYS_AHEAD]),
         CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
+        CONF_TICKET_CAPACITY: str(user_input.get(CONF_TICKET_CAPACITY, "")).strip(),
+        CONF_TICKET_SOLD: str(user_input.get(CONF_TICKET_SOLD, "")).strip(),
+        CONF_TICKET_AVAILABLE: str(user_input.get(CONF_TICKET_AVAILABLE, "")).strip(),
+        CONF_CUSTOM_FIELDS: normalize_keywords(user_input.get(CONF_CUSTOM_FIELDS)),
     }
+
+
+def _requested_keywords(options: dict[str, Any]) -> list[str]:
+    """Every custom data field the options would make us ask Yesplan for."""
+    return list(
+        dict.fromkeys(
+            [
+                *(
+                    options[conf]
+                    for conf in (CONF_TICKET_CAPACITY, CONF_TICKET_SOLD, CONF_TICKET_AVAILABLE)
+                    if options.get(conf)
+                ),
+                *options.get(CONF_CUSTOM_FIELDS, []),
+            ]
+        )
+    )
 
 
 class YesplanConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -180,25 +218,51 @@ class YesplanConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class YesplanOptionsFlow(OptionsFlow):
-    """Change locations / days ahead / interval."""
+    """Change locations, refresh settings, ticket fields and extra custom data fields."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        if user_input is not None:
-            return self.async_create_entry(data=_clean_options(user_input))
-
         entry = self.config_entry
         client = YesplanClient(
             async_get_clientsession(self.hass),
             entry.data[CONF_BASE_URL],
             entry.data[CONF_API_KEY],
         )
+        errors: dict[str, str] = {}
+        invalid = ""
+        defaults: dict[str, Any] = dict(entry.options)
+
+        if user_input is not None:
+            options = _clean_options(user_input)
+            bad = await self._rejected(client, _requested_keywords(options))
+            if not bad:
+                return self.async_create_entry(data=options)
+            _LOGGER.warning("Yesplan rejected these custom data fields: %s", bad)
+            errors["base"] = "invalid_fields"
+            invalid = "\n\n⚠ " + ", ".join(bad)
+            defaults = options  # keep what the user typed
+
         try:
             available = await client.get_locations()
         except (YesplanAuthError, YesplanConnectionError):
             available = []
-        locations = sorted(set(available) | set(entry.options.get(CONF_LOCATIONS, [])))
-        return self.async_show_form(
-            step_id="init", data_schema=_options_schema(locations, entry.options)
+        locations = sorted(
+            set(available) | set(defaults.get(CONF_LOCATIONS, entry.options.get(CONF_LOCATIONS, [])))
         )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_options_schema(locations, defaults, extras=True),
+            errors=errors,
+            description_placeholders={"invalid": invalid},
+        )
+
+    @staticmethod
+    async def _rejected(client: YesplanClient, keywords: list[str]) -> list[str]:
+        """Names Yesplan refuses. If Yesplan cannot be reached, do not block saving."""
+        if not keywords:
+            return []
+        try:
+            return await client.rejected_keywords(dt_util.now().date(), keywords)
+        except YesplanError:
+            return []

@@ -43,9 +43,17 @@
         "data": {
           "locations": "Zalen",
           "days_ahead": "Aantal dagen vooruit ophalen",
-          "scan_interval": "Verversen elke (minuten)"
-        }
+          "scan_interval": "Verversen elke (minuten)",
+          "ticket_capacity": "Kaartverkoop: veld voor capaciteit",
+          "ticket_sold": "Kaartverkoop: veld voor verkocht",
+          "ticket_available": "Kaartverkoop: veld voor beschikbaar",
+          "custom_fields": "Eigen velden (keywords)"
+        },
+        "description": "Kaartverkoop: vul de namen (keywords) in van de aangepaste velden in Yesplan. Het veld voor capaciteit is verplicht, de andere zijn optioneel. Eigen velden: voeg zoveel extra velden toe als je wilt (maximaal 20); ze komen bij elk evenement, met de naam die Yesplan eraan geeft. Laat alles leeg om het uit te zetten.{invalid}"
       }
+    },
+    "error": {
+      "invalid_fields": "Yesplan weigert een of meer van deze velden. Controleer de namen (keywords); zie hieronder welke."
     }
   },
   "entity": {
