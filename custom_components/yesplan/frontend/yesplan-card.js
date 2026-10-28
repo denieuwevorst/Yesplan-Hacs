@@ -1,20 +1,18 @@
 /* Yesplan card for Home Assistant — served by the Yesplan integration. */
-(() => { /* wrapped */
-// Version comes from the ?v= parameter the integration adds to this script's URL
-// (taken from manifest.json), so it can never go out of sync with the integration.
+(() => {
 const CARD_VERSION = (() => {
   const urls = [];
   try {
     document.querySelectorAll("script[src]").forEach((el) => urls.push(el.src));
-  } catch (e) { /* ignore */ }
+  } catch (e) {}
   try {
     performance.getEntriesByType("resource").forEach((r) => urls.push(r.name));
-  } catch (e) { /* ignore */ }
+  } catch (e) {}
   for (const u of urls.filter((x) => x.includes("yesplan-card.js")).reverse()) {
     try {
       const v = new URL(u, location.href).searchParams.get("v");
       if (v) return v;
-    } catch (e) { /* ignore */ }
+    } catch (e) {}
   }
   return "";
 })();
@@ -23,8 +21,10 @@ const STR = {
   nl: {
     todayLbl: "vandaag", schedule: "Tijdschema",
     sold: "verkocht", free: "vrij", soldOut: "Uitverkocht", seats: "plaatsen",
-    emptyToday: "Geen evenementen vandaag.", emptyTomorrow: "Geen evenementen morgen.",
+    emptyToday: "Geen evenementen vandaag.",
+    emptyTomorrow: "Geen evenementen morgen.",
     emptyWeek: "Geen evenementen deze week.",
+    emptyNext7: "Geen voorstellingen in de komende 7 dagen.",
     needUpdate: "De sensor voor deze periode ontbreekt. Werk de Yesplan-integratie bij en herstart Home Assistant.",
     noZones: "Geen zalen gevonden. Is de Yesplan-integratie ingesteld?",
     unavailable: "Niet beschikbaar",
@@ -32,8 +32,10 @@ const STR = {
   en: {
     todayLbl: "today", schedule: "Schedule",
     sold: "sold", free: "free", soldOut: "Sold out", seats: "seats",
-    emptyToday: "No events today.", emptyTomorrow: "No events tomorrow.",
+    emptyToday: "No events today.",
+    emptyTomorrow: "No events tomorrow.",
     emptyWeek: "No events this week.",
+    emptyNext7: "No performances in the next 7 days.",
     needUpdate: "The sensor for this period is missing. Update the Yesplan integration and restart Home Assistant.",
     noZones: "No locations found. Is the Yesplan integration set up?",
     unavailable: "Unavailable",
@@ -43,6 +45,7 @@ const STR = {
 const slug = (s) =>
   String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
     .replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -51,6 +54,7 @@ const RANGE_KEY = {
   today: "events_today",
   tomorrow: "events_tomorrow",
   week: "events_week",
+  next7: "events_week",
 };
 
 const GUESS = {
@@ -61,73 +65,110 @@ const GUESS = {
 
 const STYLE = `
   :host { display: block; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 12px; padding: 0 16px 16px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
+    padding: 0 16px 16px;
+  }
   .msg { padding: 16px; color: var(--secondary-text-color); }
-  .zaal { min-width: 0; background: var(--secondary-background-color, rgba(127,127,127,.08));
-          border-radius: var(--ha-card-border-radius, 12px); padding: 12px 14px;
-          border-left: 4px solid var(--divider-color); }
-  .head { display: flex; justify-content: space-between; align-items: center;
-          gap: 8px; margin-bottom: 8px; }
+  .zaal {
+    min-width: 0;
+    background: var(--secondary-background-color, rgba(127,127,127,.08));
+    border-radius: var(--ha-card-border-radius, 12px);
+    padding: 12px 14px;
+    border-left: 4px solid var(--divider-color);
+  }
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
   .name { font-weight: 600; font-size: 1.05em; }
   .list { margin-top: 6px; }
   .daysec { padding-bottom: 2px; }
   .daysec .grid { padding-bottom: 8px; }
-  .dayhead { font-size: .8em; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
-             color: var(--secondary-text-color); padding: 10px 16px 6px; }
+  .dayhead {
+    font-size: .8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--secondary-text-color);
+    padding: 10px 16px 6px;
+  }
   .dayhead.today { color: var(--primary-color); }
   .row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-  align-items: start;
-  padding: 7px 0;
-  border-top: 1px solid var(--divider-color);
-  position: relative;
-}
-
-.row .chip {
-  justify-self: end;
-  grid-row: 1;
-}
-
-.row > .time,
-.row > div:nth-child(2) {
-  grid-column: 1;
-}
-
-.row > .time {
-  grid-row: 2;
-}
-
-.row > div:nth-child(2) {
-  grid-row: 3;
-}
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: baseline;
+    padding: 7px 0;
+    border-top: 1px solid var(--divider-color);
+  }
   .row.past { opacity: .45; }
-  .tix { margin-top: 6px; display: flex; align-items: center; gap: 8px; font-size: .85em; }
-  .tix .bar { flex: 0 1 120px; min-width: 60px; height: 6px; border-radius: 3px;
-              background: var(--divider-color); overflow: hidden; }
+  .tix {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .85em;
+  }
+  .tix .bar {
+    flex: 0 1 120px;
+    min-width: 60px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--divider-color);
+    overflow: hidden;
+  }
   .tix .fill { height: 100%; background: var(--primary-color); }
   .tix.full .fill { background: var(--success-color, #43a047); }
   .tix.full span { font-weight: 600; }
-  .cust { margin-top: 6px; display: grid; grid-template-columns: auto minmax(0, 1fr);
-          column-gap: 10px; row-gap: 1px; font-size: .85em; }
+  .cust {
+    margin-top: 6px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 1px;
+    font-size: .85em;
+  }
   .cust .cl { color: var(--secondary-text-color); }
   .cust .cv { overflow-wrap: anywhere; }
-  .sched { margin-top: 8px; padding-left: 10px; border-left: 2px solid var(--divider-color);
-           display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px;
-           font-size: .85em; }
-  .sched .cap { grid-column: 1 / -1; font-size: .8em; font-weight: 600; text-transform: uppercase;
-                letter-spacing: .04em; color: var(--secondary-text-color); }
+  .sched {
+    margin-top: 8px;
+    padding-left: 10px;
+    border-left: 2px solid var(--divider-color);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 2px;
+    font-size: .85em;
+  }
+  .sched .cap {
+    grid-column: 1 / -1;
+    font-size: .8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--secondary-text-color);
+  }
   .stime { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
   .slabel { overflow-wrap: anywhere; }
   .time { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
   .title { overflow-wrap: anywhere; }
   .row > div { min-width: 0; }
   .sub { font-size: .8em; color: var(--secondary-text-color); overflow-wrap: anywhere; }
-  .chip { font-size: .7em; font-weight: 600; padding: 1px 8px; border-radius: 999px;
-          border: 1px solid currentColor; color: var(--secondary-text-color);
-          white-space: nowrap; }
+  .chip {
+    font-size: .7em;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    color: var(--secondary-text-color);
+    white-space: nowrap;
+  }
   .chip.ok { color: var(--success-color, #43a047); }
   .chip.opt { color: var(--info-color, #039be5); }
   .chip.tent { color: var(--warning-color, #ffa600); }
@@ -149,12 +190,12 @@ class YesplanCard extends HTMLElement {
       show_schedule: true,
       show_tickets: true,
       show_fields: true,
+      only_ticketed: false,
       ...config,
     };
 
     if (!RANGE_KEY[this._config.range]) this._config.range = "today";
     if (!["time", "zalen"].includes(this._config.sort)) this._config.sort = "time";
-
     this._zoneCache = null;
     this._sig = null;
     this._render();
@@ -163,7 +204,6 @@ class YesplanCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     const sig = this._signature();
-
     if (sig !== this._sig) {
       this._sig = sig;
       this._render();
@@ -171,7 +211,6 @@ class YesplanCard extends HTMLElement {
   }
 
   connectedCallback() {
-    // Relative times / past events change without any state change.
     this._timer = setInterval(() => this._render(), 60000);
   }
 
@@ -179,16 +218,12 @@ class YesplanCard extends HTMLElement {
     clearInterval(this._timer);
   }
 
-  getCardSize() {
-    return 6;
-  }
+  getCardSize() { return 6; }
 
-  // Home Assistant uses this editor in the visual card configuration dialog.
   static getConfigElement() {
     return document.createElement("yesplan-card-editor");
   }
 
-  // A useful preview in the card picker, with a safe default range.
   static getStubConfig() {
     return {
       type: "custom:yesplan-card",
@@ -229,7 +264,9 @@ class YesplanCard extends HTMLElement {
     const h = this._hass;
     const c = this._zoneCache;
 
-    if (c && c.ents === h.entities && c.devs === h.devices) return c.zones;
+    if (c && c.ents === h.entities && c.devs === h.devices) {
+      return c.zones;
+    }
 
     const byDev = {};
 
@@ -259,8 +296,7 @@ class YesplanCard extends HTMLElement {
       zones = zones
         .filter((z) => order.includes(z.name.toLowerCase()))
         .sort((a, b) =>
-          order.indexOf(a.name.toLowerCase()) - order.indexOf(b.name.toLowerCase())
-        );
+          order.indexOf(a.name.toLowerCase()) - order.indexOf(b.name.toLowerCase()));
     } else {
       zones.sort((a, b) => a.name.localeCompare(b.name, this._lang));
     }
@@ -271,7 +307,6 @@ class YesplanCard extends HTMLElement {
 
   _signature() {
     if (!this._config || !this._hass) return "";
-
     const parts = [];
 
     for (const z of this._zones()) {
@@ -300,22 +335,19 @@ class YesplanCard extends HTMLElement {
 
   _chip(status) {
     if (!status) return "";
-
     const k = status.toLowerCase();
+
     const cls = k.startsWith("bevestigd") || k === "confirmed" ? "ok"
       : k.startsWith("optie") || k === "option" ? "opt"
       : k.startsWith("voorlopig") || k === "tentative" ? "tent" : "";
 
     return `<span class="chip ${cls}">${esc(status)}</span>`;
   }
-
-  // One zone's events for the selected range, always sorted by start time.
-  _collect(z) {
+    _collect(z) {
     const id = z.ids[RANGE_KEY[this._config.range]];
     const ent = id ? this._hass.states[id] : undefined;
     const unavailable = !ent || ent.state === "unavailable";
 
-    // An unavailable sensor must not show stale data.
     const events = unavailable
       ? []
       : [...((ent.attributes && ent.attributes.events) || [])]
@@ -324,8 +356,6 @@ class YesplanCard extends HTMLElement {
     return { name: z.name, events, unavailable };
   }
 
-  // Tiles with the earliest first start time come first. Ties (and sort: zalen)
-  // keep the configured zone order.
   _order(items) {
     if (this._config.sort === "zalen") return items;
 
@@ -338,35 +368,46 @@ class YesplanCard extends HTMLElement {
       .map((x) => x[0]);
   }
 
-  // Extra custom data fields (name | value); `fields: [keyword, ...]` limits which are shown.
   _fieldsHtml(rows) {
     if (!Array.isArray(rows) || !rows.length) return "";
 
-    const only = Array.isArray(this._config.fields) ? this._config.fields : null;
-    const shown = rows.filter((r) => r && r.value && (!only || only.includes(r.keyword)));
+    const only = Array.isArray(this._config.fields)
+      ? this._config.fields
+      : null;
+
+    const shown = rows.filter(
+      (r) => r && r.value && (!only || only.includes(r.keyword))
+    );
 
     if (!shown.length) return "";
 
     return `<div class="cust">${shown
       .map((r) =>
-        `<span class="cl">${esc(r.name || r.keyword)}</span><span class="cv">${esc(r.value)}</span>`
+        `<span class="cl">${esc(r.name || r.keyword)}</span>` +
+        `<span class="cv">${esc(r.value)}</span>`
       )
       .join("")}</div>`;
   }
 
-  // Ticket sales: "112 / 144 verkocht · 32 vrij" with a bar; nothing for events without capacity.
   _ticketsHtml(t) {
     if (!t || !(t.capacity > 0)) return "";
 
     const s = this._s;
     const sold = Number.isFinite(t.sold) ? t.sold : null;
-    const full = t.available === 0 || (sold !== null && sold >= t.capacity);
-    const pct = sold === null ? 0 : Math.min(100, Math.round((sold / t.capacity) * 100));
+    const full = t.available === 0 ||
+      (sold !== null && sold >= t.capacity);
+    const pct = sold === null
+      ? 0
+      : Math.min(100, Math.round((sold / t.capacity) * 100));
 
     const text = sold === null
       ? `${t.capacity} ${s.seats}`
       : `${sold} / ${t.capacity} ${s.sold}` +
-        (full ? ` · ${s.soldOut}` : Number.isFinite(t.available) ? ` · ${t.available} ${s.free}` : "");
+        (full
+          ? ` · ${s.soldOut}`
+          : Number.isFinite(t.available)
+            ? ` · ${t.available} ${s.free}`
+            : "");
 
     const bar = sold === null
       ? ""
@@ -375,7 +416,6 @@ class YesplanCard extends HTMLElement {
     return `<div class="tix${full ? " full" : ""}">${bar}<span>${esc(text)}</span></div>`;
   }
 
-  // Schedule rows: "10:00–14:00 Rehearsal", single times for items like "Zaal dicht".
   _scheduleHtml(rows) {
     const cells = rows.map((r) =>
       `<span class="stime">${this._fmtTime(r.start)}${r.end ? `–${this._fmtTime(r.end)}` : ""}</span>` +
@@ -390,35 +430,74 @@ class YesplanCard extends HTMLElement {
     const past = end ? end <= now : false;
 
     const profile = this._config.show_profile && e.profile
-      ? `<div class="sub">${esc(e.profile)}</div>` : "";
+      ? `<div class="sub">${esc(e.profile)}</div>`
+      : "";
 
-    const showSchedule = this._config.range === "today"
-      && this._config.show_schedule !== false
-      && Array.isArray(e.schedule)
-      && e.schedule.length;
+    const showSchedule = this._config.range === "today" &&
+      this._config.show_schedule !== false &&
+      Array.isArray(e.schedule) && e.schedule.length;
 
     const schedule = showSchedule ? this._scheduleHtml(e.schedule) : "";
-    const tickets = this._config.show_tickets !== false ? this._ticketsHtml(e.tickets) : "";
-    const fields = this._config.show_fields !== false ? this._fieldsHtml(e.custom) : "";
+    const tickets = this._config.show_tickets !== false
+      ? this._ticketsHtml(e.tickets)
+      : "";
+    const fields = this._config.show_fields !== false
+      ? this._fieldsHtml(e.custom)
+      : "";
 
     return `<div class="row ${past ? "past" : ""}">
-  ${this._chip(e.status)}
-  <div class="time">${this._fmtTime(e.start)}${e.end ? `–${this._fmtTime(e.end)}` : ""}</div>
-  <div>
-    <div class="title">${esc(e.name)}</div>
-    ${profile}${tickets}${fields}${schedule}
-  </div>
-</div>`;
+      <div class="time">${this._fmtTime(e.start)}${e.end ? `–${this._fmtTime(e.end)}` : ""}</div>
+      <div><div class="title">${esc(e.name)}</div>${profile}${tickets}${fields}${schedule}</div>
+    </div>`;
+  }
+
+  _filterEvents(events) {
+    let result = events || [];
+
+    // Alleen voorstellingen met ingestelde ticketcapaciteit.
+    if (this._config.only_ticketed) {
+      result = result.filter(
+        (e) => e.tickets && Number(e.tickets.capacity) > 0
+      );
+    }
+
+    // Vandaag tot en met de zes daaropvolgende dagen.
+    if (this._config.range === "next7") {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+
+      result = result.filter((e) => {
+        const d = new Date(e.start);
+        return d >= start && d < end;
+      });
+    }
+
+    return result;
   }
 
   _tileHtml(name, events, emptyText) {
     const now = new Date();
+    const visibleEvents = this._filterEvents(events);
 
-    const list = events.length
-      ? `<div class="list">${events.map((e) => this._rowHtml(e, now)).join("")}</div>`
+    const list = visibleEvents.length
+      ? `<div class="list">${visibleEvents.map((e) => this._rowHtml(e, now)).join("")}</div>`
       : `<div class="none">${emptyText}</div>`;
 
-    return `<div class="zaal"><div class="head"><div class="name">${esc(name)}</div></div>${list}</div>`;
+    // Status staat rechts naast de zaalnaam.
+    const roomStatus = visibleEvents.length
+      ? this._chip(visibleEvents[0].status)
+      : "";
+
+    return `<div class="zaal">
+      <div class="head">
+        <div class="name">${esc(name)}</div>
+        ${roomStatus}
+      </div>
+      ${list}
+    </div>`;
   }
 
   _emptyText() {
@@ -427,28 +506,33 @@ class YesplanCard extends HTMLElement {
       today: s.emptyToday,
       tomorrow: s.emptyTomorrow,
       week: s.emptyWeek,
+      next7: s.emptyNext7,
     }[this._config.range];
   }
 
-  // Today / tomorrow: one tile per zone.
   _dayHtml(items) {
     const s = this._s;
     const empty = this._emptyText();
 
     const shown = items.filter(
-      (i) => !(this._config.hide_empty && !i.events.length && !i.unavailable)
+      (i) => !(this._config.hide_empty &&
+        !this._filterEvents(i.events).length &&
+        !i.unavailable)
     );
 
     if (!shown.length) return `<div class="msg">${empty}</div>`;
 
     return `<div class="grid">${this._order(shown)
       .map((i) =>
-        this._tileHtml(i.name, i.events, i.unavailable ? s.unavailable : empty)
+        this._tileHtml(
+          i.name,
+          i.events,
+          i.unavailable ? s.unavailable : empty
+        )
       )
       .join("")}</div>`;
   }
 
-  // Week: one section per day (chronological); inside, one tile per zone.
   _weekHtml(items) {
     const s = this._s;
     const days = new Map();
@@ -456,31 +540,30 @@ class YesplanCard extends HTMLElement {
     for (const info of items) {
       const byDay = new Map();
 
-      for (const e of info.events) {
+      for (const e of this._filterEvents(info.events)) {
         const k = this._dayKey(e.start);
         if (!byDay.has(k)) byDay.set(k, []);
         byDay.get(k).push(e);
       }
 
       for (const [k, events] of byDay) {
-        if (!days.has(k)) days.set(k, {
-          key: k,
-          first: events[0].start,
-          tiles: [],
-        });
-
+        if (!days.has(k)) {
+          days.set(k, { key: k, first: events[0].start, tiles: [] });
+        }
         days.get(k).tiles.push({ name: info.name, events });
       }
     }
 
     if (!days.size) {
-      return `<div class="msg">${items.every((i) => i.unavailable) ? s.unavailable : s.emptyWeek}</div>`;
+      return `<div class="msg">${
+        items.every((i) => i.unavailable) ? s.unavailable : this._emptyText()
+      }</div>`;
     }
 
     const todayKey = this._dayKey(new Date());
 
     return [...days.values()]
-      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
       .map((d) => {
         const label = new Date(d.first).toLocaleDateString(this._lang, {
           weekday: "long",
@@ -511,26 +594,22 @@ class YesplanCard extends HTMLElement {
 
     if (!zones.length) {
       body = `<div class="msg">${s.noZones}</div>`;
-    } else if (
-      zones.every((z) =>
-        !z.ids[key] && !this._hass.states[this._guess(z.name)[key]]
-      )
-    ) {
+    } else if (zones.every(
+      (z) => !z.ids[key] && !this._hass.states[this._guess(z.name)[key]]
+    )) {
       body = `<div class="msg">${s.needUpdate}</div>`;
     } else {
       const items = zones.map((z) => this._collect(z));
-      body = this._config.range === "week"
+      body = ["week", "next7"].includes(this._config.range)
         ? this._weekHtml(items)
         : this._dayHtml(items);
     }
 
     const title = this._config.title;
-
     this.shadowRoot.innerHTML = `<style>${STYLE}</style>
       <ha-card${title ? ` header="${esc(title)}"` : ""}>${body}</ha-card>`;
   }
 }
-
 class YesplanCardEditor extends HTMLElement {
   constructor() {
     super();
@@ -552,6 +631,7 @@ class YesplanCardEditor extends HTMLElement {
       show_schedule: true,
       show_tickets: true,
       show_fields: true,
+      only_ticketed: false,
       ...config,
     };
 
@@ -581,6 +661,7 @@ class YesplanCardEditor extends HTMLElement {
       show_schedule: this._checked("show_schedule"),
       show_tickets: this._checked("show_tickets"),
       show_fields: this._checked("show_fields"),
+      only_ticketed: this._checked("only_ticketed"),
     };
 
     this.dispatchEvent(new CustomEvent("config-changed", {
@@ -594,7 +675,7 @@ class YesplanCardEditor extends HTMLElement {
     if (!this.shadowRoot || !this._config) return;
 
     const c = this._config;
-    const checked = (key) => c[key] !== false ? "checked" : "";
+    const checked = (key) => c[key] ? "checked" : "";
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -602,38 +683,82 @@ class YesplanCardEditor extends HTMLElement {
         .form { display:grid; gap:16px; }
         label { display:grid; gap:6px; font-weight:500; }
         input[type="text"], select {
-          box-sizing:border-box; width:100%; min-height:40px; padding:8px 10px;
-          color:var(--primary-text-color); background:var(--card-background-color);
-          border:1px solid var(--outline-color, var(--divider-color)); border-radius:8px;
+          box-sizing:border-box;
+          width:100%;
+          min-height:40px;
+          padding:8px 10px;
+          color:var(--primary-text-color);
+          background:var(--card-background-color);
+          border:1px solid var(--outline-color, var(--divider-color));
+          border-radius:8px;
           font:inherit;
         }
         .checks { display:grid; gap:12px; }
-        .check { display:flex; align-items:center; gap:10px; font-weight:400; }
-        input[type="checkbox"] { width:18px; height:18px; }
+        .check {
+          display:flex;
+          align-items:center;
+          gap:10px;
+          font-weight:400;
+        }
+        input[type="checkbox"] {
+          width:18px;
+          height:18px;
+        }
       </style>
+
       <div class="form">
         <label>Titel
-          <input name="title" type="text" value="${esc(c.title || "")}" placeholder="Dagplanning">
+          <input name="title" type="text"
+            value="${esc(c.title || "")}"
+            placeholder="Dagplanning">
         </label>
+
         <label>Periode
           <select name="range">
             <option value="today" ${c.range === "today" ? "selected" : ""}>Vandaag</option>
             <option value="tomorrow" ${c.range === "tomorrow" ? "selected" : ""}>Morgen</option>
             <option value="week" ${c.range === "week" ? "selected" : ""}>Deze week</option>
+            <option value="next7" ${c.range === "next7" ? "selected" : ""}>Komende 7 dagen</option>
           </select>
         </label>
+
         <label>Sortering
           <select name="sort">
             <option value="time" ${c.sort !== "zalen" ? "selected" : ""}>Op begintijd</option>
             <option value="zalen" ${c.sort === "zalen" ? "selected" : ""}>Op zaal</option>
           </select>
         </label>
+
         <div class="checks">
-          <label class="check"><input name="hide_empty" type="checkbox" ${checked("hide_empty")}> Verberg lege zalen</label>
-          <label class="check"><input name="show_profile" type="checkbox" ${checked("show_profile")}> Toon profiel</label>
-          <label class="check"><input name="show_schedule" type="checkbox" ${checked("show_schedule")}> Toon tijdschema (vandaag)</label>
-          <label class="check"><input name="show_tickets" type="checkbox" ${checked("show_tickets")}> Toon ticketverkoop</label>
-          <label class="check"><input name="show_fields" type="checkbox" ${checked("show_fields")}> Toon extra velden</label>
+          <label class="check">
+            <input name="hide_empty" type="checkbox" ${checked("hide_empty")}>
+            Verberg lege zalen
+          </label>
+
+          <label class="check">
+            <input name="show_profile" type="checkbox" ${checked("show_profile")}>
+            Toon profiel
+          </label>
+
+          <label class="check">
+            <input name="show_schedule" type="checkbox" ${checked("show_schedule")}>
+            Toon tijdschema (vandaag)
+          </label>
+
+          <label class="check">
+            <input name="show_tickets" type="checkbox" ${checked("show_tickets")}>
+            Toon ticketverkoop
+          </label>
+
+          <label class="check">
+            <input name="only_ticketed" type="checkbox" ${checked("only_ticketed")}>
+            Alleen voorstellingen met kaartverkoop
+          </label>
+
+          <label class="check">
+            <input name="show_fields" type="checkbox" ${checked("show_fields")}>
+            Toon extra velden
+          </label>
         </div>
       </div>
     `;
@@ -664,7 +789,7 @@ if (!window.customCards.some((c) => c.type === "yesplan-card")) {
 }
 
 console.info(
-  `%c YESPLAN-CARD %c ${CARD_VERSION || "(geen ?v=)"} `,
+  `%c YESPLAN-CARD %c ${CARD_VERSION || "(geen ?v=)"}`,
   "background:#4f7cff;color:#fff",
   ""
 );
