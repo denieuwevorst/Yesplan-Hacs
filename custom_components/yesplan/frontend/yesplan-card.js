@@ -76,8 +76,33 @@ const STYLE = `
   .dayhead { font-size: .8em; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
              color: var(--secondary-text-color); padding: 10px 16px 6px; }
   .dayhead.today { color: var(--primary-color); }
-  .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px;
-         align-items: baseline; padding: 7px 0; border-top: 1px solid var(--divider-color); }
+  .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  padding: 7px 0;
+  border-top: 1px solid var(--divider-color);
+  position: relative;
+}
+
+.row .chip {
+  justify-self: end;
+  grid-row: 1;
+}
+
+.row > .time,
+.row > div:nth-child(2) {
+  grid-column: 1;
+}
+
+.row > .time {
+  grid-row: 2;
+}
+
+.row > div:nth-child(2) {
+  grid-row: 3;
+}
   .row.past { opacity: .45; }
   .tix { margin-top: 6px; display: flex; align-items: center; gap: 8px; font-size: .85em; }
   .tix .bar { flex: 0 1 120px; min-width: 60px; height: 6px; border-radius: 3px;
@@ -377,9 +402,13 @@ class YesplanCard extends HTMLElement {
     const fields = this._config.show_fields !== false ? this._fieldsHtml(e.custom) : "";
 
     return `<div class="row ${past ? "past" : ""}">
-      <div class="time">${this._fmtTime(e.start)}${e.end ? `–${this._fmtTime(e.end)}` : ""}</div>
-      <div><div class="title">${esc(e.name)}</div>${profile}${tickets}${fields}${schedule}</div>
-      ${this._chip(e.status)}</div>`;
+  ${this._chip(e.status)}
+  <div class="time">${this._fmtTime(e.start)}${e.end ? `–${this._fmtTime(e.end)}` : ""}</div>
+  <div>
+    <div class="title">${esc(e.name)}</div>
+    ${profile}${tickets}${fields}${schedule}
+  </div>
+</div>`;
   }
 
   _tileHtml(name, events, emptyText) {
