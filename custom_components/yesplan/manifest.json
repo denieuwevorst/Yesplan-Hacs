@@ -1,13 +1,13 @@
 {
   "domain": "yesplan",
   "name": "Yesplan",
-  "codeowners": ["DeNieuweVorst"],
+  "codeowners": ["@DeNieuweVorst"],
   "config_flow": true,
   "dependencies": [
     "http",
     "frontend"
   ],
-  "documentation": "https://github.com/JOUW_GEBRUIKER/yesplan-ha",
+  "documentation": "https://github.com/denieuwevorst/yesplan-ha",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/JOUW_GEBRUIKER/yesplan-ha/issues",
