@@ -14,7 +14,7 @@
         "description": "Kies de zalen waarvoor je sensors wilt hebben.",
         "data": {
           "locations": "Zalen",
-          "days_ahead": "Aantal dagen vooruit ophalen",
+          "days_ahead": "Aantal dagen vooruit ophalen (minimaal 7)",
           "scan_interval": "Verversen elke (minuten)"
         }
       },
@@ -42,7 +42,7 @@
         "title": "Yesplan-opties",
         "data": {
           "locations": "Zalen",
-          "days_ahead": "Aantal dagen vooruit ophalen",
+          "days_ahead": "Aantal dagen vooruit ophalen (minimaal 7)",
           "scan_interval": "Verversen elke (minuten)",
           "ticket_capacity": "Kaartverkoop: veld voor capaciteit",
           "ticket_sold": "Kaartverkoop: veld voor verkocht",
@@ -69,6 +69,9 @@
       },
       "events_week": {
         "name": "Voorstellingen deze week"
+      },
+      "events_next7": {
+        "name": "Voorstellingen komende 7 dagen"
       }
     },
     "binary_sensor": {

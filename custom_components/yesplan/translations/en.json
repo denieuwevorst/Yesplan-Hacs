@@ -14,7 +14,7 @@
         "description": "Pick the locations you want sensors for.",
         "data": {
           "locations": "Locations",
-          "days_ahead": "Days ahead to fetch",
+          "days_ahead": "Days ahead to fetch (minimum 7)",
           "scan_interval": "Refresh every (minutes)"
         }
       },
@@ -42,7 +42,7 @@
         "title": "Yesplan options",
         "data": {
           "locations": "Locations",
-          "days_ahead": "Days ahead to fetch",
+          "days_ahead": "Days ahead to fetch (minimum 7)",
           "scan_interval": "Refresh every (minutes)",
           "ticket_capacity": "Ticket sales: capacity field",
           "ticket_sold": "Ticket sales: sold field",
@@ -69,6 +69,9 @@
       },
       "events_week": {
         "name": "Events this week"
+      },
+      "events_next7": {
+        "name": "Events next 7 days"
       }
     },
     "binary_sensor": {

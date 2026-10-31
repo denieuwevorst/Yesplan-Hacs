@@ -30,6 +30,7 @@ def _dt(value: Any) -> datetime | None:
 
 
 MAX_CUSTOM_FIELDS = 20
+NEXT_DAYS = 7  # length of the "next days" view
 
 
 def normalize_keywords(values: Any, limit: int = MAX_CUSTOM_FIELDS) -> list[str]:
@@ -267,10 +268,10 @@ def week_bounds(today: date) -> tuple[date, date]:
 
 
 def fetch_days(today: date, days_ahead: int) -> list[date]:
-    """Days to request: the whole current week, plus enough to cover tomorrow
-    and `days_ahead` days (matters on Sundays and with a long look-ahead)."""
+    """Days to request: the whole current week, plus at least today and the six
+    days after it (the "next 7 days" view), or more if `days_ahead` is larger."""
     start, week_end = week_bounds(today)
-    last = max(week_end, today + timedelta(days=max(days_ahead, 2) - 1))
+    last = max(week_end, today + timedelta(days=max(days_ahead, NEXT_DAYS) - 1))
     return [start + timedelta(days=i) for i in range((last - start).days + 1)]
 
 

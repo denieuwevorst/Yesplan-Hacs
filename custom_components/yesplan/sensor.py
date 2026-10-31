@@ -13,7 +13,7 @@ from homeassistant.util import dt as dt_util
 from .const import CONF_LOCATIONS
 from .coordinator import YesplanConfigEntry, YesplanCoordinator
 from .entity import YesplanEntity
-from .parsing import event_to_attrs, events_between, next_event, week_bounds
+from .parsing import NEXT_DAYS, event_to_attrs, events_between, next_event, week_bounds
 
 
 async def async_setup_entry(
@@ -28,6 +28,7 @@ async def async_setup_entry(
         entities.append(YesplanEventsTodaySensor(coordinator, entry, location))
         entities.append(YesplanEventsTomorrowSensor(coordinator, entry, location))
         entities.append(YesplanEventsWeekSensor(coordinator, entry, location))
+        entities.append(YesplanEventsNext7Sensor(coordinator, entry, location))
     async_add_entities(entities)
 
 
@@ -107,3 +108,12 @@ class YesplanEventsWeekSensor(YesplanEventsSensor):
 
     def _period(self, today: date) -> tuple[date, date]:
         return week_bounds(today)
+
+
+class YesplanEventsNext7Sensor(YesplanEventsSensor):
+    """Today and the six days after it, also across the turn of the week."""
+
+    _key = "events_next7"
+
+    def _period(self, today: date) -> tuple[date, date]:
+        return today, today + timedelta(days=NEXT_DAYS - 1)

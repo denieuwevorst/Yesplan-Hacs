@@ -54,13 +54,14 @@ const RANGE_KEY = {
   today: "events_today",
   tomorrow: "events_tomorrow",
   week: "events_week",
-  next7: "events_week",
+  next7: "events_next7",
 };
 
 const GUESS = {
   events_today: ["sensor", ["voorstellingen_vandaag", "events_today"]],
   events_tomorrow: ["sensor", ["voorstellingen_morgen", "events_tomorrow"]],
   events_week: ["sensor", ["voorstellingen_deze_week", "events_this_week"]],
+  events_next7: ["sensor", ["voorstellingen_komende_7_dagen", "events_next_7_days"]],
 };
 
 const STYLE = `
@@ -461,19 +462,9 @@ class YesplanCard extends HTMLElement {
       );
     }
 
-    // Vandaag tot en met de zes daaropvolgende dagen.
-    if (this._config.range === "next7") {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-
-      const end = new Date(start);
-      end.setDate(end.getDate() + 7);
-
-      result = result.filter((e) => {
-        const d = new Date(e.start);
-        return d >= start && d < end;
-      });
-    }
+    // De periode "next7" (vandaag t/m vandaag+6) komt al kant-en-klaar uit de sensor,
+    // berekend in de tijdzone van Home Assistant. Hier niet opnieuw filteren op de
+    // tijdzone van de browser: dat gooit evenementen weg als die afwijkt.
 
     return result;
   }

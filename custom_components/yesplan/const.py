@@ -15,5 +15,5 @@ CONF_TICKET_CAPACITY = "ticket_capacity"
 CONF_TICKET_SOLD = "ticket_sold"
 CONF_TICKET_AVAILABLE = "ticket_available"
 
-DEFAULT_DAYS_AHEAD = 3
+DEFAULT_DAYS_AHEAD = 7
 DEFAULT_SCAN_INTERVAL = 15  # minutes

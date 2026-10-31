@@ -43,7 +43,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .parsing import normalize_base_url, normalize_keywords
+from .parsing import NEXT_DAYS as MIN_DAYS_AHEAD, normalize_base_url, normalize_keywords
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,9 +63,11 @@ def _options_schema(
         ),
         vol.Required(
             CONF_DAYS_AHEAD,
-            default=defaults.get(CONF_DAYS_AHEAD, DEFAULT_DAYS_AHEAD),
+            default=max(int(defaults.get(CONF_DAYS_AHEAD, DEFAULT_DAYS_AHEAD)), MIN_DAYS_AHEAD),
         ): NumberSelector(
-            NumberSelectorConfig(min=1, max=14, step=1, mode=NumberSelectorMode.BOX)
+            NumberSelectorConfig(
+                min=MIN_DAYS_AHEAD, max=14, step=1, mode=NumberSelectorMode.BOX
+            )
         ),
         vol.Required(
             CONF_SCAN_INTERVAL,
