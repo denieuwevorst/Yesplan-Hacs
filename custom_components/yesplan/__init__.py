@@ -58,3 +58,4 @@ async def async_remove_entry(hass: HomeAssistant, entry: YesplanConfigEntry) -> 
     ]
     if not others:
         await async_remove_resource(hass)
+/config/custom_components/yesplan/frontend/
